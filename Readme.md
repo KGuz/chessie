@@ -5,7 +5,7 @@
 </div>
 
 [![CI Jobs](https://github.com/KGuz/chessie/actions/workflows/ci.yml/badge.svg)](https://github.com/KGuz/chessie/actions/workflows/ci.yml)
-[![Project Status](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![Project Status](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](#license)
 
 
