@@ -77,8 +77,8 @@ fn chess_grid(projection_matrix: &Array2<f32>, n: usize) -> (Array2<f32>, Array2
 fn generate_grid(n: usize) -> Array2<f32> {
     let mut z = Array::zeros((n * n, 2));
     for i in 0..z.len_of(Axis(0)) {
-        z[[i, 0]] = (i / n) as f32;
-        z[[i, 1]] = (i % n) as f32;
+        z[[i, 0]] = (i % n) as f32;
+        z[[i, 1]] = (i / n) as f32;
     }
     z
 }
