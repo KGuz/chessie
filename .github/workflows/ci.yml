@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+    - main
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Type Check
+      run: cargo check --verbose
+    - name: Build
+      run: cargo build --verbose
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Run Tests
+      run: cargo test --verbose
+
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check Formatting
+        run: cargo fmt --all --check
+
+  lint:
+    name: Clippy Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Clippy
+        run: cargo clippy --all-features --all-targets -- -D warnings
+

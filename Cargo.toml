@@ -1,0 +1,9 @@
+[package]
+name = "chessie"
+version = "0.1.0"
+edition = "2021"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[dependencies]
