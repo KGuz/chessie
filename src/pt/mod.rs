@@ -24,7 +24,7 @@ macro_rules! pt {
         Pt::default()
     };
     ($p: expr) => {{
-        Pt::from($p).into_type()
+        Pt::from($p).to_type()
     }};
     ($x: expr, $y: expr) => {
         Pt($x, $y)
@@ -277,7 +277,7 @@ impl<'a, T: Copy> From<ArrayView1<'a, T>> for Pt<T> {
 }
 
 impl<T: Copy + NumCast> Pt<T> {
-    pub fn into_type<U: NumCast>(self) -> Pt<U> {
+    pub fn to_type<U: NumCast>(self) -> Pt<U> {
         Pt(num::cast(self.0).unwrap(), num::cast(self.1).unwrap())
     }
 

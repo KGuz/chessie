@@ -1,30 +1,12 @@
-#![allow(dead_code, unused)]
-use crate::conversions::*;
-use image::{ImageBuffer, Luma, Primitive};
-use imageproc::{
-    contours::Contour, definitions::Clamp, geometric_transformations,
-    geometric_transformations::Projection, point::Point,
-};
-use itertools::Itertools;
-use ndarray::prelude::*;
-use plotly::{
-    common::{ColorScale, ColorScalePalette},
-    layout::{LayoutTemplate, Template},
-    HeatMap, Layout, Plot, Trace,
-};
-use serde::Serialize;
+#![allow(dead_code, unused_macros, unused_imports)]
 
-pub trait Number: Primitive + Serialize + Default + num::Num {}
-macro_rules! impl_number {
-    ($($T: ty),*) => {$(
-        impl Number for $T {}
-    )*};
-}
-impl_number!(usize, u8, u16, u32, u64, isize, i8, i16, i32, i64, f32, f64);
-
-/////////////////////////////////// Plotting //////////////////////////////////
+use crate::utl::{image_ext::LumaImg, traits::Number};
+use imageproc::{contours::Contour, point::Point};
+use ndarray::{Array2, Axis};
+use plotly::{HeatMap, Plot, Trace};
 
 type BoxHeatMap<T> = Box<HeatMap<f64, f64, Vec<T>>>;
+
 pub trait AsHeatmap<T: Number> {
     fn as_heatmap(&self) -> BoxHeatMap<T>;
     fn dimensions(&self) -> (usize, usize);
@@ -108,6 +90,7 @@ macro_rules! imshow {
         plot.set_layout(layout);
         show_plot(&plot);
     }};
+
     ($image: expr) => {
         imshow!($image, plotly::common::ColorScalePalette::Greys)
     };
@@ -175,125 +158,6 @@ fn open_with_cmd(temp_path: &str) {
         .arg(format!(r#"start {}"#, temp_path))
         .output()
         .expect("Default html app not found");
-}
-
-///////////////////////////////// Ndarray Misc ////////////////////////////////
-
-macro_rules! amap {
-    (@zeros_like $first:expr) => {
-        ndarray::Array::zeros($first.raw_dim())
-    };
-    (@zeros_like $first:expr, $($rest:tt)*) => {
-        ndarray::Array::zeros($first.raw_dim())
-    };
-
-    (($($val:pat in $arr:expr),+) $body: expr) => {{
-        let mut _arr = (amap!(@zeros_like $($arr),*));
-        ndarray::azip!((_a in &mut _arr, $($val in $arr),*) *_a = $body);
-        _arr
-    }};
-    (($($val:pat),+) in ($($arr:expr),+) $body: expr) => {{
-        let mut _arr = (amap!(@zeros_like $($arr),*));
-        ndarray::azip!((_a in &mut _arr, $($val in $arr),*) *_a = $body);
-        _arr
-    }};
-}
-pub(crate) use amap;
-
-macro_rules! argwhere {
-    ($arr:ident $($rest:tt)*) => {
-        $arr.indexed_iter().filter_map(|(idx, &val)| {
-            if val $($rest)* { Some(idx) } else { None }
-        })
-    };
-}
-pub(crate) use argwhere;
-
-pub trait Misc<T> {
-    fn threshold(&mut self, val: T);
-    fn count(&self, f: fn(T) -> bool) -> usize;
-    fn argwhere(&self, f: fn(T) -> bool) -> Array1<(usize, usize)>;
-}
-
-impl<T: Number> Misc<T> for Array2<T> {
-    fn threshold(&mut self, val: T) {
-        self.mapv_inplace(|a| if a < val { T::default() } else { a });
-    }
-    fn count(&self, f: fn(T) -> bool) -> usize {
-        self.iter().copied().filter(|x| f(*x)).count()
-    }
-    fn argwhere(&self, f: fn(T) -> bool) -> Array1<(usize, usize)> {
-        let f = |(idx, &val)| if f(val) { Some(idx) } else { None };
-        Array1::from_iter(self.indexed_iter().filter_map(f))
-    }
-}
-
-pub fn meshgrid<T: Number>(x: &Array1<T>, y: &Array1<T>) -> Array2<T> {
-    let (xlen, ylen) = (x.len(), y.len());
-    let mut z = Array::zeros((xlen * ylen, 2));
-
-    for i in 0..z.len_of(Axis(0)) {
-        z[[i, 1]] = y[i / xlen];
-        z[[i, 0]] = x[i % ylen];
-    }
-    z
-}
-
-#[allow(unused)]
-fn interlope(n: usize) -> Vec<usize> {
-    let mut cycle = true;
-    let mut x = (0..n).cycle();
-    let mut y = (0..n).cycle();
-    (0..n * n)
-        .map(|_| {
-            cycle = !cycle;
-            if cycle {
-                x.next().unwrap()
-            } else {
-                y.next().unwrap()
-            }
-        })
-        .collect()
-}
-////////////////////////////////// Image Misc /////////////////////////////////
-
-pub struct Gradients<T: Number> {
-    pub x: Array2<T>,
-    pub y: Array2<T>,
-    pub xx: Array2<T>,
-    pub yy: Array2<T>,
-    pub xy: Array2<T>,
-}
-
-impl<T: Number + Clamp<T>> Gradients<T> {
-    pub fn compute(mat: &LumaImg<T>) -> Gradients<T> {
-        let [h, v] = Self::get_sobel_kernels();
-        let xmat = imageproc::filter::filter3x3(mat, &h);
-        let ymat = imageproc::filter::filter3x3(mat, &v);
-
-        let xx = imageproc::filter::filter3x3(&xmat, &h).into_array();
-        let yy = imageproc::filter::filter3x3(&ymat, &v).into_array();
-        let xy = imageproc::filter::filter3x3(&xmat, &v).into_array();
-        let y = ymat.into_array();
-        let x = xmat.into_array();
-        Self { x, y, xx, yy, xy }
-    }
-
-    fn get_sobel_kernels() -> [[T; 9]; 2] {
-        let (n1, n2) = (
-            T::from(-1).unwrap_or_default(),
-            T::from(-2).unwrap_or_default(),
-        );
-        let (p1, p2) = (
-            T::from(1).unwrap_or_default(),
-            T::from(2).unwrap_or_default(),
-        );
-        let z0 = T::from(0.).unwrap_or_default();
-
-        let h = [n1, z0, p1, n2, z0, p2, n1, z0, p1];
-        let v = [n1, n2, n1, z0, z0, z0, p1, p2, p1];
-        [h, v]
-    }
 }
 
 pub struct Visualize;

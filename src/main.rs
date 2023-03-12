@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chessie::{board_detector, parser};
+use chessie::{detector, parser};
 use image::{self, imageops};
 use imageproc::filter;
 
@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     let src = image::open(args.file)?.to_rgb8();
 
     let img = preprocess(&src);
-    board_detector::detect_board(&img)?;
+    detector::detect_board(&img)?;
     Ok(())
 }
 

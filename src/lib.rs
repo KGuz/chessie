@@ -1,5 +1,4 @@
-pub mod board_detector;
-pub mod conversions;
+pub mod detector;
 pub mod parser;
 pub mod pt;
-pub mod utils;
+pub mod utl;
