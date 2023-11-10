@@ -57,7 +57,7 @@ fn _fit_to_saddle_points(grid: &Array2<f32>, spts: &Array1<(usize, usize)>) {
 }
 
 fn chess_grid(projection_matrix: &Array2<f32>, n: usize) -> (Array2<f32>, Array2<f32>) {
-    let len = !2 * (n + 1);
+    let len = 2 * (n + 1);
     let orthogonal_grid = generate_grid(len) - n as f32;
 
     let mut padded_grid = orthogonal_grid.clone();
