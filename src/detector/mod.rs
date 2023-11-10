@@ -138,7 +138,9 @@ fn is_square_like<T: Into<f64> + Copy>(points: &[point::Point<T>], epsilon: f64)
         .iter()
         .map(|p| Point::new(p.x.into(), p.y.into()))
         .collect();
-    let [a, b, c, d] = points[..] else { return false };
+    let [a, b, c, d] = points[..] else {
+        return false;
+    };
 
     let dist =
         |p1: Point<f64>, p2: Point<f64>| ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt();
