@@ -13,8 +13,13 @@ pub fn detect_board(src: &LumaImg<u8>) -> Result<()> {
 
     // finds all the points that can determine the edges of the chess squares
     let sp = saddle_points(&img);
-    let mut nms = nonmax_suppression(&sp, 20);
-    nms.threshold(nms.sum() / nms.count(f32::is_normal) as f32); // why sum / non-zero count as threshold? don't remember...
+    let mut nms = nonmax_suppression(&sp, 16);
+
+    // disregards influence of subnormal values
+    let average = nms.sum() / nms.count(f32::is_normal) as f32;
+    nms.threshold(average);
+
+    // transforms 2d array into 1d array of points
     let spts = nms.argwhere(|x| x > 0.);
 
     // finds all contours inside the image and filters them using previously detected points
@@ -41,25 +46,6 @@ pub fn detect_board(src: &LumaImg<u8>) -> Result<()> {
     Ok(())
 }
 
-/// Compares saddle points to interior points of contours and filters out those
-/// contours that do not overlap.
-fn refine_contours(contours: &mut Vec<Contour<u32>>, spts: &Array1<(usize, usize)>) {
-    let dist = |sp: (usize, usize), cp: &Point<u32>| {
-        sp.0.abs_diff(cp.y as usize) + sp.1.abs_diff(cp.x as usize)
-    };
-
-    for cnt in contours {
-        for cp in &mut cnt.points {
-            let argmin = spts.mapv(|sp| dist(sp, cp)).argmin().unwrap();
-            let (y, x) = spts[argmin];
-
-            if dist((y, x), cp) < 20 {
-                *cp = Point::new(x as u32, y as u32);
-            }
-        }
-    }
-}
-
 /// Calculates image gradients and finds points on the surface of the graph of
 /// those functions where the derivatives in orthogonal directions are zero.
 /// These points are then pruned by selecting only a subset of most prominent
@@ -71,10 +57,9 @@ fn saddle_points(img: &LumaImg<f32>) -> Array2<f32> {
         if s < 0. { 0. } else { s }
     });
 
-    // idea: sort the points and choose a hundred of most prominent
-
+    // IDEA: sort the points and choose a fixed number of most prominent
     let mut score = saddle.mapv(|s| u32::from(s > 0.)).sum();
-    let mut th = 0.5; // starting value of threshold
+    let mut th = 0.5;
     while score > 10000 {
         th *= 2.;
         saddle.threshold(th);
@@ -83,7 +68,7 @@ fn saddle_points(img: &LumaImg<f32>) -> Array2<f32> {
     saddle
 }
 
-/// Eliminates duplicate detections and selects only the most prominent points
+/// Eliminates duplicate detections and selects only the most prominent point
 /// within a window of a given size.
 fn nonmax_suppression<T: std::cmp::PartialOrd + Default + Copy>(
     arr: &Array2<T>,
@@ -131,6 +116,25 @@ fn find_contours(img: &LumaImg<u8>) -> Vec<Contour<u32>> {
         .map(simplify_contour)
         .filter(is_valid)
         .collect()
+}
+
+/// Compares saddle points to interior points of contours and filters out those
+/// contours that do not overlap.
+fn refine_contours(contours: &mut Vec<Contour<u32>>, spts: &Array1<(usize, usize)>) {
+    let dist = |sp: (usize, usize), cp: &Point<u32>| {
+        sp.0.abs_diff(cp.y as usize) + sp.1.abs_diff(cp.x as usize)
+    };
+
+    for cnt in contours {
+        for cp in &mut cnt.points {
+            let argmin = spts.mapv(|sp| dist(sp, cp)).argmin().unwrap();
+            let (y, x) = spts[argmin];
+
+            if dist((y, x), cp) < 20 {
+                *cp = Point::new(x as u32, y as u32);
+            }
+        }
+    }
 }
 
 /// Calculates the area of the surface enclosed by a set of points
