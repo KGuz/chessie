@@ -4,7 +4,7 @@
   <p><strong>Free and Open Source Chess Inference Engine</strong></p>
 </div>
 
-[![CI Jobs](https://github.com/KGuz/chessie/actions/workflows/ci.yml/badge.svg)](https://github.com/KGuz/chessie/actions/workflows/ci.yml)
+[![CI Jobs](https://github.com/KGuz/chessie/actions/workflows/rust.yml/badge.svg)](https://github.com/KGuz/chessie/actions/workflows/rust.yml)
 [![Project Status](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](#license)
 
