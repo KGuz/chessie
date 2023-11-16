@@ -73,7 +73,7 @@ pub struct Gradients<T: Number> {
 
 impl<T: Number + Clamp<T>> Gradients<T> {
     pub fn compute(mat: &LumaImg<T>) -> Gradients<T> {
-        let [h, v] = Self::get_sobel_kernels();
+        let (h, v) = (Self::horizontal_sobel(), Self::vertical_sobel());
         let xmat = filter::filter3x3(mat, &h);
         let ymat = filter::filter3x3(mat, &v);
 
@@ -85,20 +85,30 @@ impl<T: Number + Clamp<T>> Gradients<T> {
         Self { x, y, xx, yy, xy }
     }
 
-    fn get_sobel_kernels() -> [[T; 9]; 2] {
+    fn vertical_sobel<V: Number>() -> [V; 9] {
         let (n1, n2) = (
-            T::from(-1).unwrap_or_default(),
-            T::from(-2).unwrap_or_default(),
+            V::from(-1).unwrap_or_default(),
+            V::from(-2).unwrap_or_default(),
         );
         let (p1, p2) = (
-            T::from(1).unwrap_or_default(),
-            T::from(2).unwrap_or_default(),
+            V::from(1).unwrap_or_default(),
+            V::from(2).unwrap_or_default(),
         );
-        let z0 = T::from(0.).unwrap_or_default();
+        let z0 = V::from(0.).unwrap_or_default();
+        [n1, n2, n1, z0, z0, z0, p1, p2, p1]
+    }
 
-        let h = [n1, z0, p1, n2, z0, p2, n1, z0, p1];
-        let v = [n1, n2, n1, z0, z0, z0, p1, p2, p1];
-        [h, v]
+    fn horizontal_sobel<V: Number>() -> [V; 9] {
+        let (n1, n2) = (
+            V::from(-1).unwrap_or_default(),
+            V::from(-2).unwrap_or_default(),
+        );
+        let (p1, p2) = (
+            V::from(1).unwrap_or_default(),
+            V::from(2).unwrap_or_default(),
+        );
+        let z0 = V::from(0.).unwrap_or_default();
+        [n1, z0, p1, n2, z0, p2, n1, z0, p1]
     }
 }
 
