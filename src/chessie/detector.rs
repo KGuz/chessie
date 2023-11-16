@@ -201,14 +201,14 @@ fn projection_matrix(contour: Contour<u32>) -> Option<Projection> {
 
 /// Generates an array of points in an n by n grid.
 /// ```
-/// let arr = array![
+/// let arr = ndarray::array![
 ///     [0., 0.], [1., 0.], [2., 0.],
 ///     [0., 1.], [1., 1.], [2., 1.],
 ///     [0., 2.], [1., 2.], [2., 2.],
 /// ];
-/// assert_eq!(generate_grid(3), arr);
+/// assert_eq!(chessie::generate_grid(3), arr);
 /// ```
-fn generate_grid(n: usize) -> Array2<f32> {
+pub fn generate_grid(n: usize) -> Array2<f32> {
     let mut z = Array::zeros((n * n, 2));
     for i in 0..z.len_of(Axis(0)) {
         z[[i, 0]] = (i % n) as f32;
