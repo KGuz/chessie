@@ -1,5 +1,5 @@
 use super::{ndarray_ext::IntoArray, traits::Number};
-use image::{ImageBuffer, Luma, Pixel, Primitive, Rgb};
+use image::{EncodableLayout, ImageBuffer, Luma, Pixel, PixelWithColorType, Primitive, Rgb};
 use imageproc::{definitions::Clamp, filter};
 use ndarray::{Array, Ix2, Ix3};
 
@@ -109,6 +109,21 @@ impl<T: Number + Clamp<T>> Gradients<T> {
         );
         let z0 = V::from(0.).unwrap_or_default();
         [n1, z0, p1, n2, z0, p2, n1, z0, p1]
+    }
+}
+
+pub fn display<P, Container>(image: &ImageBuffer<P, Container>)
+where
+    P: PixelWithColorType,
+    [P::Subpixel]: EncodableLayout,
+    Container: std::ops::Deref<Target = [P::Subpixel]>,
+{
+    let mut path = std::env::temp_dir();
+    path.push(format!("{}.jpg", uuid::Uuid::new_v4()));
+
+    match image.save(&path) {
+        Ok(_) => super::open_with_cmd(&path.display().to_string()),
+        Err(err) => eprintln!("Failed to display file: {err}"),
     }
 }
 

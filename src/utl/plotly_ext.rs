@@ -151,13 +151,13 @@ fn save_plot(plot: &Plot) -> String {
     temp_path.to_string()
 }
 
-fn open_with_cmd(temp_path: &str) {
-    // Hand off the job of opening the browser to an OS-specific implementation.
+/// Hands off the job of opening the file to an OS-specific implementation.
+pub fn open_with_cmd(temp_path: &str) {
     std::process::Command::new("cmd")
         .arg("/C")
-        .arg(format!(r#"start {}"#, temp_path))
+        .arg(format!(r#"start {temp_path}"#))
         .output()
-        .expect("Default html app not found");
+        .expect("Default app not found");
 }
 
 pub struct Visualize;

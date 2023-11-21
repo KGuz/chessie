@@ -1,14 +1,18 @@
 use crate::utl::{AsArray, *};
 use anyhow::Result;
-use image::{self, imageops};
-use imageproc::{contours::Contour, geometric_transformations::Projection, point::Point, *};
+use image::{imageops, Luma};
+use imageproc::{
+    contours::Contour,
+    geometric_transformations::{warp, Interpolation, Projection},
+    point::Point,
+    *,
+};
 use itertools::Itertools;
 use ndarray::prelude::*;
 use ndarray_stats::QuantileExt;
-use plotly::common::ColorScalePalette;
-use std::f32::consts::SQRT_2;
+use std::cmp::Reverse;
 
-pub fn detect_board(src: &LumaImg<u8>) -> Result<()> {
+pub fn detect_board(src: &LumaImg<u8>) -> Result<LumaImg<u8>> {
     let img: LumaImg<f32> = imageops::grayscale_with_type(src);
 
     // finds all the points that can determine the edges of the chess squares
@@ -24,47 +28,84 @@ pub fn detect_board(src: &LumaImg<u8>) -> Result<()> {
 
     // finds all contours inside the image and filters them using previously detected points
     let mut contours = find_contours(src);
-    refine_contours(&mut contours, &spts);
+    update_contours(&mut contours, &spts);
 
-    // displays all the data calculated so far
-    imshow!(&nms);
-    Visualize::contours(&contours);
-    Visualize::points(&spts.iter().map(|sp| Point::new(sp.1, sp.0)).collect_vec());
-
-    // TODO:
-    // For each contour, treat their points as a perfect square and calculate
+    // for each contour, treat their points as a perfect square and calculate
     // the projection matrix. Use this projection matrix to generate a set of
     // points around this contour and see how closely they match those
-    // previously detected.
-    for cnt in contours {
-        let projection_matrix = projection_matrix(cnt).unwrap().as_array();
+    // previously detected. If the generated points are in proximity of
+    // detected saddle points, treat them as a match and update their
+    // coordinates to better fit saddle point and repeat process using more
+    // points. Keep track of the number of inliers for given projection and
+    // find a projection with the biggest number of inliers
+    let mut best_projections = vec![];
+    let mut inliers_count = 0;
+
+    for cnt in &contours {
+        // calculate projection matrix that transforms identity square into given quad
+        let mut projection_matrix = calc_projection(cnt).as_array();
+        let mut inliers;
+        // with every iteration, generate new projection matrix that better fits saddle points in the image
         for n in 1..8 {
-            let (_orthogonal_grid_n, _transformed_grid_n) = chess_grid(&projection_matrix, n);
+            // generate a grid containing points from the considered contour in the center
+            let (mut transformed_grid_n, ideal_grid_n) = chess_grid(&projection_matrix, n);
+
+            // snap grid points to closest saddle point within range
+            inliers = update_grid(&mut transformed_grid_n, &spts, 2.);
+
+            // generate new projection matrix for updated grid
+            let _ = update_projection(
+                &mut projection_matrix,
+                &ideal_grid_n,
+                &transformed_grid_n,
+                &inliers,
+            );
+
+            inliers_count = inliers.iter().map(|&x| x as u32).sum::<u32>();
+            let points_count = inliers.len();
+            println!("iteration {n}: matched {inliers_count} out of {points_count} points",);
         }
+        best_projections.push((projection_matrix, inliers_count));
     }
 
-    Ok(())
+    // finds the projection with the biggest number of inliers
+    best_projections.sort_by_key(|(_, inliers_count)| Reverse(*inliers_count));
+    let (best_projection, _) = &best_projections[0];
+
+    // calculates a set of points that surround a chessboard and uses them to
+    // find a projection that strechess chessboard to the edges of image
+    let offset = 7.;
+    let a = best_projection.dot(&array![-offset, -offset, 1.]);
+    let b = best_projection.dot(&array![ offset, -offset, 1.]);
+    let c = best_projection.dot(&array![ offset,  offset, 1.]);
+    let d = best_projection.dot(&array![-offset,  offset, 1.]);
+    let a = (a[0] / a[2], a[1] / a[2]);
+    let b = (b[0] / b[2], b[1] / b[2]);
+    let c = (c[0] / c[2], c[1] / c[2]);
+    let d = (d[0] / d[2], d[1] / d[2]);
+    let projection = Projection::from_control_points(
+        [a, b, c, d],
+        [(0., 0.), (1280., 0.), (1280., 720.), (0., 720.)],
+    )
+    .unwrap();
+
+    // transforms image into perfect square with chessboard in the middle
+    let res = warp(&src, &projection, Interpolation::Nearest, Luma([255]));
+    let res = imageops::resize(&res, 1280, 1280, imageops::FilterType::Nearest);
+    
+    display(&res);
+    Ok(res)
 }
 
 /// Calculates image gradients and finds points on the surface of the graph of
 /// those functions where the derivatives in orthogonal directions are zero.
-/// These points are then pruned by selecting only a subset of most prominent
-/// points.
 fn saddle_points(img: &LumaImg<f32>) -> Array2<f32> {
     let g = Gradients::compute(img);
     let mut saddle = amap!((xx in &g.xx, yy in &g.yy, xy in &g.xy) {
         let s = -(xx * yy - xy.powi(2));
         if s < 0. { 0. } else { s }
     });
-
-    // IDEA: sort the points and choose a fixed number of most prominent
-    let mut score = saddle.mapv(|s| u32::from(s > 0.)).sum();
-    let mut th = 0.5;
-    while score > 10000 {
-        th *= 2.;
-        saddle.threshold(th);
-        score = saddle.mapv(|s| u32::from(s > 0.)).sum();
-    }
+    saddle.threshold(1.0);
     saddle
 }
 
@@ -120,7 +161,7 @@ fn find_contours(img: &LumaImg<u8>) -> Vec<Contour<u32>> {
 
 /// Compares saddle points to interior points of contours and filters out those
 /// contours that do not overlap.
-fn refine_contours(contours: &mut Vec<Contour<u32>>, spts: &Array1<(usize, usize)>) {
+fn update_contours(contours: &mut Vec<Contour<u32>>, spts: &Array1<(usize, usize)>) {
     let dist = |sp: (usize, usize), cp: &Point<u32>| {
         sp.0.abs_diff(cp.y as usize) + sp.1.abs_diff(cp.x as usize)
     };
@@ -134,6 +175,14 @@ fn refine_contours(contours: &mut Vec<Contour<u32>>, spts: &Array1<(usize, usize
                 *cp = Point::new(x as u32, y as u32);
             }
         }
+    }
+}
+
+/// Translates points inside Contour to an array of tuples
+fn to_points<T: Number>(contour: &Contour<T>) -> [(T, T); 4] {
+    match contour.points.as_slice() {
+        [a, b, c, d] => [a.as_pair(), b.as_pair(), c.as_pair(), d.as_pair()],
+        _ => unreachable!(),
     }
 }
 
@@ -180,27 +229,12 @@ fn is_square_like<T: Into<f64> + Copy>(points: &[point::Point<T>], epsilon: f64)
     are_equal(&sides[..2]) && are_equal(&sides[2..]) && are_equal(&diags)
 }
 
-/// Calculates a projection matrix that transforms a given contour into a
-/// perfect square. Upper left point is treated as the anchor.
-fn projection_matrix(contour: Contour<u32>) -> Option<Projection> {
-    let _side_len = |points: [(f32, f32); 4]| {
-        let [ul, ur, dr, dl] = points;
-        let d1 = ((ul.0 - dr.0).powi(2) + (ul.1 - dr.1).powi(2)).sqrt();
-        let d2 = ((ur.0 - dl.0).powi(2) + (ur.1 - dl.1).powi(2)).sqrt();
-        0.25 * (d1 + d2) * SQRT_2
-    };
-
-    let contour = contour
-        .points
-        .iter()
-        .map(|p| (p.x as f32, p.y as f32))
-        .collect_vec();
-    let from: [(f32, f32); 4] = contour.as_slice().try_into().ok()?;
-    let (x0, y0) = from[0];
-
-    let a = 1.; // side_len(from);
-    let to = [(x0, y0), (x0 + a, y0), (x0 + a, y0 + a), (x0, y0 + a)];
-    Projection::from_control_points(to, from)
+/// Calculates projection matrix that transforms perfect identity square into a
+/// given contour
+fn calc_projection(contour: &Contour<u32>) -> Projection {
+    let to = to_points(contour).map(|(x, y)| (x as f32, y as f32));
+    let from = [(0., 0.), (1., 0.), (1., 1.), (0., 1.)];
+    Projection::from_control_points(from, to).unwrap()
 }
 
 /// Generates an array of points in an n by n grid.
@@ -221,6 +255,8 @@ pub fn generate_grid(n: usize) -> Array2<f32> {
     z
 }
 
+/// Generates a grid of points with padding for n square chessboard by transforming
+/// ideal chessboard with given proojection matrix
 fn chess_grid(projection_matrix: &Array2<f32>, n: usize) -> (Array2<f32>, Array2<f32>) {
     let len = 2 * (n + 1);
     let orthogonal_grid = generate_grid(len) - n as f32;
@@ -235,66 +271,72 @@ fn chess_grid(projection_matrix: &Array2<f32>, n: usize) -> (Array2<f32>, Array2
         .axis_iter_mut(Axis(0))
         .for_each(|mut row| row /= row[2]);
     transformed_grid.remove_index(Axis(1), 2);
-
-    (orthogonal_grid, transformed_grid)
+    (transformed_grid, orthogonal_grid)
 }
 
-/* ------------------------------ experiments ------------------------------ */
-
-#[allow(unused)]
-fn draw_contours(img: &LumaImg<f32>, contours: &[Contour<u32>]) {
-    let mut canvas = img.clone();
-    for cnt in contours {
-        let poly: Vec<_> = cnt
-            .points
-            .iter()
-            .map(|p| Point::new(p.x as i32, p.y as i32))
-            .collect();
-        drawing::draw_polygon_mut(&mut canvas, &poly, image::Luma([0.]));
+/// Calcuates which of saddle points is closest to given point
+fn min_saddle_distance(
+    pt: (f32, f32),
+    saddle_points: &Array1<(usize, usize)>,
+) -> ((f32, f32), f32) {
+    let (mut best_dist, mut best_point) = (f32::MAX, pt);
+    for sp in saddle_points {
+        let sp = (sp.1 as f32, sp.0 as f32); // saddle points are in y, x order
+        let dist = (sp.0 - pt.0).powi(2) + (sp.1 - pt.1).powi(2);
+        if dist < best_dist {
+            best_dist = dist;
+            best_point = sp;
+        }
     }
-    imshow!(&canvas, ColorScalePalette::Viridis);
+    (best_point, best_dist.sqrt())
 }
 
-#[allow(unused)]
-fn fit_to_saddle_points(grid: &Array2<f32>, spts: &Array1<(usize, usize)>) {
-    dbg!(grid, spts);
-    let _n = grid.len_of(Axis(0));
-    let _new_grid = grid.clone();
+/// Updates points on a grid by snapping them to a closest saddle point within range
+fn update_grid(
+    transformed_grid: &mut Array2<f32>,
+    saddle_points: &Array1<(usize, usize)>,
+    window: f32,
+) -> Vec<bool> {
+    let mut updated = vec![false; transformed_grid.len_of(Axis(0))];
 
-    for point in grid.axis_iter(Axis(0)) {
-        let (_x, _y) = (point[0] as i64, point[1] as i64);
+    for (n, mut arr) in transformed_grid.axis_iter_mut(Axis(0)).enumerate() {
+        let pt = (arr[0], arr[1]);
+        let (best_point, dist) = min_saddle_distance(pt, saddle_points);
+        if dist < window {
+            arr[0] = best_point.0;
+            arr[1] = best_point.1;
+            updated[n] = true;
+        }
     }
+    updated
 }
 
-#[allow(unused)]
-fn phase_masked(img: &LumaImg<f32>) -> Array2<f32> {
-    let g = Gradients::compute(img);
-    let mag = amap!((gx in &g.x, gy in &g.y) f32::sqrt(gx * gx + gy * gy));
-    let phase = amap!((x in &g.x, y in &g.y) x.atan2(*y));
+fn update_projection(
+    projection_matrix: &mut Array2<f32>,
+    ideal_grid: &Array2<f32>,
+    transformed_grid: &Array2<f32>,
+    updated: &[bool],
+) -> Result<(), ()> {
+    let tform_iter = transformed_grid
+        .axis_iter(Axis(0))
+        .map(|arr| [arr[0] as f64, arr[1] as f64]);
+    let ideal_iter = ideal_grid
+        .axis_iter(Axis(0))
+        .map(|arr| [arr[0] as f64, arr[1] as f64]);
+    let matches = tform_iter
+        .zip(ideal_iter)
+        .enumerate()
+        .filter(|(n, _)| updated[*n])
+        .map(|(_, (to, from))| [from, to])
+        .collect_vec();
 
-    let avg = mag.mean().unwrap();
-    amap!((m in &mag, p in &phase) {
-        if *m < 2. * avg { f32::NAN } else { *p }
-    })
-}
-
-#[allow(unused)]
-fn detect_lines(img: &LumaImg<u8>) -> Vec<hough::PolarLine> {
-    let [th1, th2, votes] = [120, 140, 90];
-
-    let canny = edges::canny(img, th1 as f32, th2 as f32);
-    let options = hough::LineDetectionOptions {
-        vote_threshold: votes as u32,
-        suppression_radius: 2,
+    let Some(homograpy_matrix) = super::arrsac(&matches) else {
+        return Err(());
     };
-    hough::detect_lines(&canny, options)
-}
 
-#[allow(unused)]
-fn morphology_gradient(image: &LumaImg<u8>, norm: distance_transform::Norm, k: u8) -> LumaImg<u8> {
-    let dilate = morphology::dilate(image, norm, k);
-    let erode = morphology::erode(image, norm, k);
-    (dilate.into_array() - erode.into_array()).into_image()
+    let matrix = homograpy_matrix.into_iter().map(|x| x as f32);
+    *projection_matrix = Array::from_iter(matrix).into_shape((3, 3)).unwrap();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -339,8 +381,5 @@ mod tests {
         ];
         let output = generate_grid(8);
         assert_eq!(output, expected);
-
-        // let grid = meshgrid(&array![0, 1, 2], &array![0, 1]);
-        // dbg!(grid);
     }
 }

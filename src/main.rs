@@ -31,6 +31,6 @@ fn main() -> Result<()> {
 
     let img = chessie::preprocess(&src);
     chessie::detect_board(&img)?;
-    // chessie::manual_transform(&img)?;
+    
     Ok(())
 }

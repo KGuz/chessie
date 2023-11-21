@@ -1,8 +1,9 @@
 use image::Primitive;
 use num::Num;
 use serde::Serialize;
+use std::fmt::Debug;
 
-pub trait Number: Primitive + Serialize + Default + Num {}
+pub trait Number: Primitive + Serialize + Default + Num + Debug {}
 
 macro_rules! impl_number {
     ($($T: ty),*) => {$(
