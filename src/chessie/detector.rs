@@ -43,29 +43,29 @@ pub fn detect_board(src: &LumaImg<u8>) -> Result<LumaImg<u8>> {
 
     for cnt in &contours {
         // calculate projection matrix that transforms identity square into given quad
-        let mut projection_matrix = calc_projection(cnt).as_array();
+        let mut projection = calc_projection(cnt).as_array();
         let mut inliers;
         // with every iteration, generate new projection matrix that better fits saddle points in the image
         for n in 1..8 {
             // generate a grid containing points from the considered contour in the center
-            let (mut transformed_grid_n, ideal_grid_n) = chess_grid(&projection_matrix, n);
+            let (mut transformed_grid, ideal_grid) = chess_grid(&projection, n);
 
             // snap grid points to closest saddle point within range
-            inliers = update_grid(&mut transformed_grid_n, &spts, 2.);
+            inliers = update_grid(&mut transformed_grid, &spts, 2.);
+            inliers_count = inliers.iter().map(|&x| x as u32).sum::<u32>();
 
             // generate new projection matrix for updated grid
-            let _ = update_projection(
-                &mut projection_matrix,
-                &ideal_grid_n,
-                &transformed_grid_n,
-                &inliers,
-            );
+            if let Err(err) =
+                update_projection(&mut projection, &ideal_grid, &transformed_grid, &inliers)
+            {
+                eprintln!("{err}");
+                break;
+            }
 
-            inliers_count = inliers.iter().map(|&x| x as u32).sum::<u32>();
             let points_count = inliers.len();
-            println!("iteration {n}: matched {inliers_count} out of {points_count} points",);
+            println!("iteration {n}: matched {inliers_count} out of {points_count} points");
         }
-        best_projections.push((projection_matrix, inliers_count));
+        best_projections.push((projection, inliers_count));
     }
 
     // finds the projection with the biggest number of inliers
@@ -312,11 +312,11 @@ fn update_grid(
 }
 
 fn update_projection(
-    projection_matrix: &mut Array2<f32>,
+    projection: &mut Array2<f32>,
     ideal_grid: &Array2<f32>,
     transformed_grid: &Array2<f32>,
-    updated: &[bool],
-) -> Result<(), ()> {
+    inliers: &[bool],
+) -> Result<()> {
     let tform_iter = transformed_grid
         .axis_iter(Axis(0))
         .map(|arr| [arr[0] as f64, arr[1] as f64]);
@@ -326,16 +326,13 @@ fn update_projection(
     let matches = tform_iter
         .zip(ideal_iter)
         .enumerate()
-        .filter(|(n, _)| updated[*n])
+        .filter(|(n, _)| inliers[*n])
         .map(|(_, (to, from))| [from, to])
         .collect_vec();
 
-    let Some(homograpy_matrix) = super::arrsac(&matches) else {
-        return Err(());
-    };
-
-    let matrix = homograpy_matrix.into_iter().map(|x| x as f32);
-    *projection_matrix = Array::from_iter(matrix).into_shape((3, 3)).unwrap();
+    let homography = super::arrsac(&matches)?;
+    let iter = homography.into_iter().map(|x| x as f32);
+    *projection = Array::from_iter(iter).into_shape((3, 3))?;
     Ok(())
 }
 

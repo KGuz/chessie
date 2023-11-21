@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use arrsac::Arrsac;
 use itertools::Itertools;
 use nalgebra::{distance_squared, Const, Matrix3, Point2, SMatrix};
@@ -29,7 +30,7 @@ impl Model<[Point; 2]> for HomographyMatrix {
 struct HomographyEstimator;
 impl Estimator<[Point; 2]> for HomographyEstimator {
     type Model = HomographyMatrix;
-    type ModelIter = Option<HomographyMatrix>;
+    type ModelIter = Result<HomographyMatrix>;
     const MIN_SAMPLES: usize = 4;
 
     fn estimate<I>(&self, data: I) -> Self::ModelIter
@@ -41,7 +42,7 @@ impl Estimator<[Point; 2]> for HomographyEstimator {
     }
 }
 
-pub fn homography(matches: &[[Point; 2]]) -> Option<[f64; 9]> {
+pub fn homography(matches: &[[Point; 2]]) -> Result<[f64; 9]> {
     let (m1, m2): (Vec<Point2<f64>>, Vec<Point2<f64>>) = matches
         .iter()
         .map(|m| (Point2::new(m[0][0], m[0][1]), Point2::new(m[1][0], m[1][1])))
@@ -78,7 +79,9 @@ pub fn homography(matches: &[[Point; 2]]) -> Option<[f64; 9]> {
         || s1.x.abs() < f64::EPSILON
         || s1.y.abs() < f64::EPSILON
     {
-        return None;
+        return Err(anyhow!(
+            "Err: Could not calcuate homograpy matrix. Data points are too close to each other"
+        ));
     }
 
     s2.x = count as f64 / s2.x;
@@ -125,10 +128,10 @@ pub fn homography(matches: &[[Point; 2]]) -> Option<[f64; 9]> {
         res[0][1], res[1][1], res[2][1], 
         res[0][2], res[1][2], res[2][2],
     ];
-    Some(res)
+    Ok(res)
 }
 
-pub fn arrsac(matches: &[[Point; 2]]) -> Option<[f64; 9]> {
+pub fn arrsac(matches: &[[Point; 2]]) -> Result<[f64; 9]> {
     let mut matches = matches.to_owned();
     matches.shuffle(&mut Pcg64::seed_from_u64(0xDEADC0DE));
 
@@ -136,5 +139,7 @@ pub fn arrsac(matches: &[[Point; 2]]) -> Option<[f64; 9]> {
     let estimator = HomographyEstimator;
 
     let model = arrsac.model(&estimator, matches.into_iter());
-    model.map(|m| m.0)
+    model.map(|m| m.0).ok_or(anyhow!(
+        "Err: Could not calcuate homograpy matrix. No valid model could be found for the data"
+    ))
 }
