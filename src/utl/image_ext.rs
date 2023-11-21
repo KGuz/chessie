@@ -123,7 +123,7 @@ where
 
     match image.save(&path) {
         Ok(_) => super::open_with_cmd(&path.display().to_string()),
-        Err(err) => eprintln!("Failed to display file: {err}"),
+        Err(err) => eprintln!("failed to display an image: {err}"),
     }
 }
 

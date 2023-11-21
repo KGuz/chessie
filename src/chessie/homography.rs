@@ -97,7 +97,7 @@ pub fn homography(matches: &[[Point; 2]]) -> Option<[f64; 9]> {
         let y1 = (m1[i].y - c1.y) * s1.y;
         let lx = [x1, y1, 1., 0., 0., 0., -x2 * x1, -x2 * y1, -x2];
         let ly = [0., 0., 0., x1, y1, 1., -y2 * x1, -y2 * y1, -y2];
-        // println!("{} lx {:?} ly {:?}", i, lx, ly);
+
         for j in 0..9 {
             for k in 0..9 {
                 ltl[(j, k)] += lx[j] * lx[k] + ly[j] * ly[k];

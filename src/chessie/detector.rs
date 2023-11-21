@@ -76,9 +76,9 @@ pub fn detect_board(src: &LumaImg<u8>) -> Result<LumaImg<u8>> {
     // find a projection that strechess chessboard to the edges of image
     let offset = 7.;
     let a = best_projection.dot(&array![-offset, -offset, 1.]);
-    let b = best_projection.dot(&array![ offset, -offset, 1.]);
-    let c = best_projection.dot(&array![ offset,  offset, 1.]);
-    let d = best_projection.dot(&array![-offset,  offset, 1.]);
+    let b = best_projection.dot(&array![offset, -offset, 1.]);
+    let c = best_projection.dot(&array![offset, offset, 1.]);
+    let d = best_projection.dot(&array![-offset, offset, 1.]);
     let a = (a[0] / a[2], a[1] / a[2]);
     let b = (b[0] / b[2], b[1] / b[2]);
     let c = (c[0] / c[2], c[1] / c[2]);
@@ -90,9 +90,9 @@ pub fn detect_board(src: &LumaImg<u8>) -> Result<LumaImg<u8>> {
     .unwrap();
 
     // transforms image into perfect square with chessboard in the middle
-    let res = warp(&src, &projection, Interpolation::Nearest, Luma([255]));
+    let res = warp(src, &projection, Interpolation::Nearest, Luma([255]));
     let res = imageops::resize(&res, 1280, 1280, imageops::FilterType::Nearest);
-    
+
     display(&res);
     Ok(res)
 }
