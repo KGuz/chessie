@@ -1,4 +1,4 @@
-use anyhow::Result;
+use chessie::types::Result;
 use clap::Parser;
 
 const ABOUT: &str = "Chessie (Chess Inference Engine) is a cli tool that aims to provide support 
@@ -27,10 +27,11 @@ pub struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let src = image::open(args.file)?.to_rgb8();
+    let src = image::open(args.file)
+        .map_err(|_| "Err: Could not open the file")?
+        .to_rgb8();
 
-    let img = chessie::preprocess(&src);
-    chessie::detect_board(&img)?;
+    let _res = chessie::run(&src)?;
 
     Ok(())
 }
