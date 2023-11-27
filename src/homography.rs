@@ -32,7 +32,7 @@ impl Estimator<FeatureMatch> for HomographyEstimator {
 /// Attempts to calculate a projection matrix from pairs of points containing
 /// outliers using Adaptive Real-time Random Sample Consensus algorithm
 pub fn arrsac(mut matches: Vec<FeatureMatch>) -> Result<Matrix3<f64>> {
-    let mut rng = rand_pcg::Pcg64::seed_from_u64(0xDEADC0DE);
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(0xDEAD_C0DE);
     matches.shuffle(&mut rng);
 
     let model = Arrsac::new(1., rng)

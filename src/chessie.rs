@@ -71,19 +71,19 @@ fn update_saddle_points(mat: &mut DMatrix<f32>, window: usize, threshold: f32) {
     let mut nms = DMatrix::zeros(nrows, ncols);
     let (mut sum, mut count) = (0., 0);
 
-    for c in 0..ncols {
-        for r in 0..nrows {
+    for c in window..ncols - window {
+        for r in window..nrows - window {
             let val = mat[(r, c)];
             if val <= threshold {
                 continue;
             }
 
-            let [c0, cn] = [c.saturating_sub(window), ncols.min(c + window + 1)];
-            let [r0, rn] = [r.saturating_sub(window), nrows.min(r + window + 1)];
+            let [c0, cn] = [c - window, c + window];
+            let [r0, rn] = [r - window, r + window];
 
             let mut max = 0.;
-            for ic in c0..cn {
-                for ir in r0..rn {
+            for ic in c0..=cn {
+                for ir in r0..=rn {
                     if max < mat[(ir, ic)] {
                         max = mat[(ir, ic)];
                     }
@@ -159,7 +159,7 @@ fn polygon_area([a, b, c, d]: &Quad<usize>) -> usize {
 /// sides of equal length and diagonals of equal length
 fn is_square_like(points: &Quad<usize>, epsilon: f32) -> bool {
     use nalgebra::distance as dist;
-    let [a, b, c, d] = points.map(|p| p.cast::<f32>());
+    let [a, b, c, d] = points.map(Point2::cast::<f32>);
 
     let sides = (dist(&a, &b), dist(&b, &c), dist(&c, &d), dist(&d, &a));
     let diags = (dist(&a, &c), dist(&b, &d));
@@ -214,7 +214,7 @@ fn find_unit_square_transform(quads: &[Quad<usize>], markers: &[Point2<usize>]) 
 
     let (mut projection, mut count) = (Matrix3::zeros(), 0);
     for quad in quads {
-        let matches = izip!(square, quad.map(|p| p.cast::<f64>())).collect();
+        let matches = izip!(square, quad.map(Point2::cast::<f64>)).collect();
         let Ok(mut h) = homography::homography(matches) else {
             continue;
         };
