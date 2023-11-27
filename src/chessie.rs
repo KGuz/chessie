@@ -190,7 +190,6 @@ fn update_quads(quads: &mut [Quad<usize>], markers: &[Point2<usize>], radius: f3
     }
 }
 
-/// Tries to calculate a projection matrix that transforms identity square into
 /// Attempts to compute a projection matrix that transforms the identity square
 /// into the square defined by the corners of the chessboard
 /// ### Explanation
